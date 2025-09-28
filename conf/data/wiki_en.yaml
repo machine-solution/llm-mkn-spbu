@@ -1,0 +1,14 @@
+# @package _global_
+
+data:
+  dataset_name: "blo05/cleaned_wiki_en"
+  max_length: 32
+  train_split: "train"
+  val_split: "train"
+  val_split_size: 0.001
+  num_workers: 2
+  pin_memory: true
+  
+  # Tokenizer
+  tokenizer_name: "gpt2"
+  vocab_size: 50257

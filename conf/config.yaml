@@ -1,0 +1,19 @@
+defaults:
+  - model: llama_small
+  - training: default
+  - data: wiki_en
+  - _self_
+
+# Global settings
+project_name: "llama_training"
+experiment_name: "llama_small_wiki"
+seed: 42
+
+# Paths
+data_dir: "./data"
+output_dir: "./outputs"
+log_dir: "./logs"
+checkpoint_dir: "./checkpoints"
+
+# Device
+device: "cuda"

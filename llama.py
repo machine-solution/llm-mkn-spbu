@@ -26,25 +26,27 @@ class SelfAttention(nn.Module):
         self.WO = Linear(config.hidden_size, config.hidden_size)
 
     def forward(self, x):
-        seq_len, hidden_size = x.shape
+        batch_size, seq_len, hidden_size = x.shape
         q = self.WQ(x)
         k = self.WK(x)
         v = self.WV(x)
-        q = q.view(seq_len, self.n_heads, self.head_dim)
-        k = k.view(seq_len, self.n_heads, self.head_dim)
-        v = v.view(seq_len, self.n_heads, self.head_dim)
-        q = q.transpose(0, 1)
-        k = k.transpose(0, 1)
-        v = v.transpose(0, 1)
+        q = q.view(batch_size, seq_len, self.n_heads, self.head_dim)
+        k = k.view(batch_size, seq_len, self.n_heads, self.head_dim)
+        v = v.view(batch_size, seq_len, self.n_heads, self.head_dim)
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
         attn = nn.functional.softmax(
             torch.where(
-                torch.triu(torch.ones(seq_len, seq_len)).to(torch.bool),
+                torch.triu(torch.ones(seq_len, seq_len)).to(x.device).to(torch.bool),
                 -torch.inf,
                 (q @ k.transpose(-2, -1)) * (1 / math.sqrt(self.head_dim)),
             ),
             dim=-1,
         )
-        out = self.WO(attn @ v)
+        out = attn @ v
+        out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
+        out = self.WO(out)
         return out
 
 class RoPE(nn.Module):
@@ -63,18 +65,22 @@ class RoPE(nn.Module):
         self.sin = torch.sin(self.temp)
 
     def split(self, x):
-        first_half = x[:, :self.head_dim // 2]
-        second_half = x[:, self.head_dim // 2:]
+        first_half = x[:, :, :self.head_dim // 2]
+        second_half = x[:, :, self.head_dim // 2:]
         return first_half, second_half
     
     def rotate(self, x):
-        seq_len = x.shape[0]
-        range_pos = torch.arange(0, seq_len, dtype=torch.float32)
-        temp = range_pos.view(-1, 1) * self.t.view(1, -1)
+        batch_size, seq_len = x.shape[:2]
+        range_pos = torch.arange(0, seq_len, dtype=torch.float32, device=x.device)
+        temp = range_pos.view(-1, 1) * self.t.view(1, -1).to(x.device)
         cos = torch.cos(temp)
         sin = torch.sin(temp)
         
         first_half, second_half = self.split(x)
+        # cos and sin have shape (seq_len, head_dim//2), we need to broadcast to (batch_size, seq_len, head_dim//2)
+        cos = cos.unsqueeze(0).expand(batch_size, -1, -1)
+        sin = sin.unsqueeze(0).expand(batch_size, -1, -1)
+        
         return torch.cat(
             [
                 first_half * cos + second_half * sin, 
@@ -123,33 +129,33 @@ class LlamaBlock(nn.Module):
         self.ffn_norm = RMSNorm(config.hidden_size)
 
     def forward(self, x):
+        batch_size, seq_len, hidden_size = x.shape
         normed_x = self.attention_norm(x)
         q = self.attention.WQ(normed_x)
         k = self.attention.WK(normed_x)
         v = self.attention.WV(normed_x)
         
-        seq_len, hidden_size = normed_x.shape
-        q = q.view(seq_len, self.attention.n_heads, self.attention.head_dim)
-        k = k.view(seq_len, self.attention.n_heads, self.attention.head_dim)
-        v = v.view(seq_len, self.attention.n_heads, self.attention.head_dim)
+        q = q.view(batch_size, seq_len, self.attention.n_heads, self.attention.head_dim)
+        k = k.view(batch_size, seq_len, self.attention.n_heads, self.attention.head_dim)
+        v = v.view(batch_size, seq_len, self.attention.n_heads, self.attention.head_dim)
         
         for i in range(self.attention.n_heads):
-            q[:, i, :], k[:, i, :] = self.rope(q[:, i, :], k[:, i, :])
+            q[:, :, i, :], k[:, :, i, :] = self.rope(q[:, :, i, :], k[:, :, i, :])
         
-        q = q.transpose(0, 1)
-        k = k.transpose(0, 1)
-        v = v.transpose(0, 1)
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
         
         attn = nn.functional.softmax(
             torch.where(
-                torch.triu(torch.ones(seq_len, seq_len), diagonal=1).to(torch.bool),
+                torch.triu(torch.ones(seq_len, seq_len), diagonal=1).to(x.device).to(torch.bool),
                 -torch.inf,
                 (q @ k.transpose(-2, -1)) * (1 / math.sqrt(self.attention.head_dim)),
             ),
             dim=-1,
         )
         attn_out = attn @ v
-        attn_out = attn_out.transpose(0, 1).contiguous().view(seq_len, hidden_size)
+        attn_out = attn_out.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_size)
         attn_out = self.attention.WO(attn_out)
         
         x = x + attn_out
