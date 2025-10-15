@@ -100,6 +100,11 @@ class Trainer:
         total_loss = 0
         num_batches = 0
         
+        # Check if we have max_steps limit
+        max_steps = self.config["training"].get("max_steps")
+        if max_steps is not None and self.global_step >= max_steps:
+            return 0.0, 0.0  # Already reached max steps
+        
         progress_bar = tqdm(train_loader, desc=f"Epoch {self.epoch}")
         
         for batch in progress_bar:
@@ -115,14 +120,20 @@ class Trainer:
                 
                 progress_bar.set_postfix({
                     "loss": f"{loss:.4f}",
-                    "lr": f"{self.scheduler.get_last_lr()[0]:.2e}"
+                    "lr": f"{self.scheduler.get_last_lr()[0]:.2e}",
+                    "step": f"{self.global_step}"
                 })
             
             # Save checkpoint
             if self.global_step % self.config["training"]["save_every"] == 0:
                 self.save_checkpoint()
+            
+            # Check max_steps limit
+            if max_steps is not None and self.global_step >= max_steps:
+                print(f"\nReached max_steps limit: {max_steps}")
+                break
         
-        avg_train_loss = total_loss / num_batches
+        avg_train_loss = total_loss / num_batches if num_batches > 0 else 0.0
         avg_val_loss = self.validate(val_loader)
         
         # Log epoch metrics
@@ -133,7 +144,13 @@ class Trainer:
     
     def train(self, train_loader, val_loader):
         """Main training loop"""
-        print(f"Starting training for {self.config['training']['num_epochs']} epochs")
+        max_steps = self.config["training"].get("max_steps")
+        
+        if max_steps is not None:
+            print(f"Starting training for max {max_steps} steps")
+        else:
+            print(f"Starting training for {self.config['training']['num_epochs']} epochs")
+        
         print(f"Device: {self.device}")
         print(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
         
@@ -146,6 +163,11 @@ class Trainer:
             # Log epoch metrics
             self.writer.add_scalar("epoch/train_loss", train_loss, epoch)
             self.writer.add_scalar("epoch/val_loss", val_loss, epoch)
+            
+            # Check if we reached max_steps
+            if max_steps is not None and self.global_step >= max_steps:
+                print(f"Training stopped: reached max_steps ({max_steps})")
+                break
         
         # Save final model
         self.save_checkpoint(is_final=True)

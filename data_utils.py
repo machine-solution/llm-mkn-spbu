@@ -20,6 +20,11 @@ class WikiDataset(Dataset):
         # Tokenize the text
         tokens = self.tokenizer.encode(text, self.max_length)
         
+        # Clamp tokens to vocab_size to avoid CUDA errors
+        # Crutch
+        vocab_size = self.tokenizer.get_vocab_size()
+        tokens = torch.clamp(tokens, 0, vocab_size - 1)
+        
         # For language modeling, input and target are the same (shifted by 1)
         input_ids = tokens[:-1]
         target_ids = tokens[1:]

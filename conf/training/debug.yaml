@@ -1,0 +1,22 @@
+# @package _global_
+
+training:
+  batch_size: 16
+  learning_rate: 1e-4
+  num_epochs: 1
+  max_steps: 20
+  warmup_steps: 0
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 1
+  save_every: 1000000
+  log_every: 1
+  
+  optimizer: "adamw"
+  weight_decay: 0.0
+  beta1: 0.9
+  beta2: 0.95
+  
+  scheduler: "cosine"
+  min_lr: 1e-6
+
+

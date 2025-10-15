@@ -1,0 +1,8 @@
+# @package _global_
+
+model:
+  n_layers: 1
+  n_heads: 2
+  vocab_size: 4096
+  hidden_size: 32
+  seq_len: 32

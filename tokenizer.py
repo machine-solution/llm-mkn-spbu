@@ -1,12 +1,17 @@
 import torch
-from transformers import GPT2Tokenizer
+from transformers import GPT2Tokenizer, BertTokenizer
 from typing import List, Dict, Any
 
 class TextTokenizer:
     def __init__(self, tokenizer_name: str = "gpt2", vocab_size: int = 32000):
-        self.tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_name)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.vocab_size = len(self.tokenizer)
+        if "bert" in tokenizer_name.lower():
+            self.tokenizer = BertTokenizer.from_pretrained(tokenizer_name)
+        else:
+            self.tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_name)
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # Use provided vocab_size instead of actual tokenizer vocab size
+        self.vocab_size = vocab_size
         
     def encode(self, text: str, max_length: int = 512) -> torch.Tensor:
         """Encode text to token IDs"""
@@ -17,7 +22,12 @@ class TextTokenizer:
             truncation=True,
             return_tensors="pt"
         )
-        return tokens.squeeze(0)
+        tokens = tokens.squeeze(0)
+        
+        # Clamp tokens to vocab_size to avoid CUDA errors
+        tokens = torch.clamp(tokens, 0, self.vocab_size - 1)
+        
+        return tokens
     
     def decode(self, token_ids: torch.Tensor) -> str:
         """Decode token IDs to text"""
@@ -32,7 +42,12 @@ class TextTokenizer:
             truncation=True,
             return_tensors="pt"
         )
-        return tokens["input_ids"]
+        tokens = tokens["input_ids"]
+        
+        # Clamp tokens to vocab_size to avoid CUDA errors
+        tokens = torch.clamp(tokens, 0, self.vocab_size - 1)
+        
+        return tokens
     
     def get_vocab_size(self) -> int:
         return self.vocab_size

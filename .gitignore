@@ -7,3 +7,4 @@ venv/
 logs/
 outputs/
 checkpoints/
+logs_hw3/

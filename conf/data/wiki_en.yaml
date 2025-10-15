@@ -11,4 +11,4 @@ data:
   
   # Tokenizer
   tokenizer_name: "gpt2"
-  vocab_size: 50257
+  vocab_size: 4096
